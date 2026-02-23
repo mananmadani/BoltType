@@ -104,6 +104,10 @@ function buildTextDisplay() {
   textDisplay.innerHTML = '';
   wordSpans = [];
 
+  // All words go inside this inner div — it slides UP via translateY
+  const inner = document.createElement('div');
+  inner.id = 'text-inner';
+
   words.forEach((word, wi) => {
     const wordEl = document.createElement('span');
     wordEl.className = 'word';
@@ -124,8 +128,10 @@ function buildTextDisplay() {
       wordSpans.push({ span: spaceSpan, char: ' ' });
     }
 
-    textDisplay.appendChild(wordEl);
+    inner.appendChild(wordEl);
   });
+
+  textDisplay.appendChild(inner);
 
   // Mark first char as cursor
   if (wordSpans.length > 0) {
@@ -287,6 +293,9 @@ hiddenInput.addEventListener('input', (e) => {
     // All words done — regenerate
     words = generateWords(80);
     buildTextDisplay();
+    // Reset the slide-up position for the fresh batch
+    const inner = document.getElementById('text-inner');
+    if (inner) inner.style.transform = 'translateY(0)';
     currentIndex = 0;
   }
 
@@ -340,11 +349,38 @@ document.getElementById('typing-card').addEventListener('click', () => {
   if (gameActive) hiddenInput.focus();
 });
 
-// ─── Scroll cursor into view ───────────────────────────
+// ─── Scroll cursor into view (slide text UP) ──────────
 function scrollToCursor() {
-  if (currentIndex < wordSpans.length) {
-    wordSpans[currentIndex].span.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  if (currentIndex >= wordSpans.length) return;
+
+  const inner = document.getElementById('text-inner');
+  if (!inner) return;
+
+  const cursorSpan = wordSpans[currentIndex].span;
+
+  // One line height = fontSize × lineHeight = 1.12rem × 1.9
+  // We measure it live from the first span so it's always accurate
+  const firstSpan = wordSpans[0] ? wordSpans[0].span : null;
+  const lineH = firstSpan
+    ? Math.round(firstSpan.getBoundingClientRect().height * 1.9)
+    : Math.round(parseFloat(getComputedStyle(textDisplay).fontSize) * 1.9);
+
+  // offsetTop of cursor span relative to #text-inner
+  // Walk up the DOM to get offset relative to inner
+  let offsetTop = 0;
+  let el = cursorSpan;
+  while (el && el !== inner) {
+    offsetTop += el.offsetTop;
+    el = el.offsetParent;
   }
+
+  // Which line is the cursor on? (0-indexed)
+  const currentLine = Math.floor(offsetTop / lineH);
+
+  // Keep cursor on the 1st visible line; slide up once it reaches line 2+
+  const translateY = currentLine > 0 ? -(currentLine * lineH) : 0;
+
+  inner.style.transform = `translateY(${translateY}px)`;
 }
 
 // ─── Button Events ─────────────────────────────────────
