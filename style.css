@@ -235,7 +235,7 @@ html, body {
   word-wrap: break-word;
   display: none;
   /* Fixed 3-line clipping window — text slides UP as you type */
-  height: calc(1.12rem * 1.9 * 3);   /* exactly 3 visible lines */
+  height: calc(1.12rem * 1.9 * 2.2); /* ~2 visible lines — safer above keyboard */
   overflow: hidden;
   position: relative;
 }
@@ -253,7 +253,7 @@ html, body {
 
 /* Inner scrolling wrapper — gets translateY applied by JS */
 #text-inner {
-  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   will-change: transform;
 }
 
