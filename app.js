@@ -1,16 +1,13 @@
 /* =====================================================
-   BoltType — app.js
-   Vanilla JS typing engine: highlight, timer, WPM,
-   accuracy, high score (localStorage), service worker
+   BoltType — app.js  (v3 — line-map scroll)
    ===================================================== */
-
 'use strict';
 
 // ─── Register Service Worker ─────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('service-worker.js')
-      .then(reg => console.log('[SW] Registered:', reg.scope))
+      .then(reg  => console.log('[SW] Registered:', reg.scope))
       .catch(err => console.warn('[SW] Registration failed:', err));
   });
 }
@@ -40,41 +37,46 @@ const WORD_BANK = [
 ];
 
 // ─── DOM References ───────────────────────────────────
-const timerDisplay    = document.getElementById('timer-display');
-const wpmDisplay      = document.getElementById('wpm-display');
-const highscoreDisplay= document.getElementById('highscore-display');
-const textDisplay     = document.getElementById('text-display');
-const hiddenInput     = document.getElementById('hidden-input');
-const startBtn        = document.getElementById('start-btn');
-const resetBtn        = document.getElementById('reset-btn');
-const idleScreen      = document.getElementById('idle-screen');
-const accuracyWrap    = document.getElementById('accuracy-wrap');
-const accuracyBar     = document.getElementById('accuracy-bar');
-const accuracyLabel   = document.getElementById('accuracy-label');
-const modeBadge       = document.getElementById('mode-badge');
-const resultsOverlay  = document.getElementById('results-overlay');
-const resultWpm       = document.getElementById('result-wpm');
-const resultAcc       = document.getElementById('result-acc');
-const resultChars     = document.getElementById('result-chars');
-const newBest         = document.getElementById('new-best');
-const playAgainBtn    = document.getElementById('play-again-btn');
+const timerDisplay     = document.getElementById('timer-display');
+const wpmDisplay       = document.getElementById('wpm-display');
+const highscoreDisplay = document.getElementById('highscore-display');
+const textDisplay      = document.getElementById('text-display');
+const hiddenInput      = document.getElementById('hidden-input');
+const startBtn         = document.getElementById('start-btn');
+const resetBtn         = document.getElementById('reset-btn');
+const idleScreen       = document.getElementById('idle-screen');
+const accuracyWrap     = document.getElementById('accuracy-wrap');
+const accuracyBar      = document.getElementById('accuracy-bar');
+const accuracyLabel    = document.getElementById('accuracy-label');
+const modeBadge        = document.getElementById('mode-badge');
+const resultsOverlay   = document.getElementById('results-overlay');
+const resultWpm        = document.getElementById('result-wpm');
+const resultAcc        = document.getElementById('result-acc');
+const resultChars      = document.getElementById('result-chars');
+const newBest          = document.getElementById('new-best');
+const playAgainBtn     = document.getElementById('play-again-btn');
 
 // ─── State ─────────────────────────────────────────────
-const GAME_DURATION = 60; // seconds
+const GAME_DURATION = 60;
 
-let words         = [];
-let wordSpans     = [];   // flat array of {span, char}
-let currentIndex  = 0;    // char index across all chars
-let correctCount  = 0;
-let wrongCount    = 0;
-let totalTyped    = 0;
-let timerInterval = null;
-let timeLeft      = GAME_DURATION;
-let gameActive    = false;
-let gameStarted   = false;
-let highScore     = 0;
-let scrollY       = 0;    // current translateY applied to #text-inner
-let lastCursorTop = -1;   // cursor's last measured top (px from container)
+let words        = [];
+let wordSpans    = [];      // [{span, char}, ...]
+let currentIndex = 0;
+let correctCount = 0;
+let wrongCount   = 0;
+let totalTyped   = 0;
+let timerInterval= null;
+let timeLeft     = GAME_DURATION;
+let gameActive   = false;
+let gameStarted  = false;
+let highScore    = 0;
+
+// ─── Line-map scroll state ─────────────────────────────
+// lineStarts[i] = the charIndex at which line i begins
+// lineH = one rendered line's pixel height (font-size × line-height)
+let lineStarts   = [];
+let lineH        = 0;
+let currentLine  = 0;       // which line the cursor is on
 
 // ─── High Score ────────────────────────────────────────
 function loadHighScore() {
@@ -102,11 +104,11 @@ function generateWords(count = 80) {
   return arr;
 }
 
+// Build DOM — text-display must already be visible when this is called
 function buildTextDisplay() {
   textDisplay.innerHTML = '';
   wordSpans = [];
 
-  // All words go inside this inner div — it slides UP via translateY
   const inner = document.createElement('div');
   inner.id = 'text-inner';
 
@@ -114,20 +116,18 @@ function buildTextDisplay() {
     const wordEl = document.createElement('span');
     wordEl.className = 'word';
 
-    // Each character gets its own span
     [...word].forEach(char => {
-      const span = document.createElement('span');
-      span.textContent = char;
-      wordEl.appendChild(span);
-      wordSpans.push({ span, char });
+      const s = document.createElement('span');
+      s.textContent = char;
+      wordEl.appendChild(s);
+      wordSpans.push({ span: s, char });
     });
 
-    // Space after word (except last)
     if (wi < words.length - 1) {
-      const spaceSpan = document.createElement('span');
-      spaceSpan.textContent = ' ';
-      wordEl.appendChild(spaceSpan);
-      wordSpans.push({ span: spaceSpan, char: ' ' });
+      const sp = document.createElement('span');
+      sp.textContent = ' ';
+      wordEl.appendChild(sp);
+      wordSpans.push({ span: sp, char: ' ' });
     }
 
     inner.appendChild(wordEl);
@@ -135,9 +135,34 @@ function buildTextDisplay() {
 
   textDisplay.appendChild(inner);
 
-  // Mark first char as cursor
-  if (wordSpans.length > 0) {
-    wordSpans[0].span.classList.add('cursor');
+  // Set opening cursor
+  if (wordSpans.length) wordSpans[0].span.classList.add('cursor');
+}
+
+// ─── Build a line-start map AFTER DOM is rendered ─────
+// Compares the .top of each char span (via getBoundingClientRect)
+// to discover where each new visual line starts.
+function measureLineMap() {
+  lineStarts  = [];
+  lineH       = 0;
+  currentLine = 0;
+
+  if (!wordSpans.length) return;
+
+  // Measure one character's rendered height
+  const firstRect = wordSpans[0].span.getBoundingClientRect();
+  lineH = firstRect.height * 1.9; // matches CSS line-height: 1.9
+
+  let lastTop = Math.round(firstRect.top);
+  lineStarts.push(0);
+
+  for (let i = 1; i < wordSpans.length; i++) {
+    const t = Math.round(wordSpans[i].span.getBoundingClientRect().top);
+    // A new line has started if top moved down by more than half a char
+    if (t > lastTop + firstRect.height * 0.5) {
+      lineStarts.push(i);
+      lastTop = t;
+    }
   }
 }
 
@@ -146,25 +171,17 @@ function startTimer() {
   timerInterval = setInterval(() => {
     timeLeft--;
     timerDisplay.textContent = timeLeft;
-
-    // Flash timer red when low
-    if (timeLeft <= 10) {
-      timerDisplay.style.color = 'var(--wrong)';
-    }
-    if (timeLeft <= 0) {
-      endGame();
-    }
+    if (timeLeft <= 10) timerDisplay.style.color = 'var(--wrong)';
+    if (timeLeft <= 0)  endGame();
   }, 1000);
 }
 
-// ─── WPM Calculation ───────────────────────────────────
+// ─── WPM / Accuracy ────────────────────────────────────
 function calcWPM() {
-  const minutesElapsed = (GAME_DURATION - timeLeft) / 60;
-  if (minutesElapsed === 0) return 0;
-  // Standard: 5 chars = 1 word
-  return Math.round((correctCount / 5) / minutesElapsed);
+  const mins = (GAME_DURATION - timeLeft) / 60;
+  if (mins === 0) return 0;
+  return Math.round((correctCount / 5) / mins);
 }
-
 function calcAccuracy() {
   if (totalTyped === 0) return 100;
   return Math.round((correctCount / totalTyped) * 100);
@@ -172,40 +189,46 @@ function calcAccuracy() {
 
 // ─── Game Flow ─────────────────────────────────────────
 function initGame() {
-  // Reset state
   clearInterval(timerInterval);
-  currentIndex  = 0;
-  correctCount  = 0;
-  wrongCount    = 0;
-  totalTyped    = 0;
-  timeLeft      = GAME_DURATION;
-  gameActive    = false;
-  gameStarted   = false;
-  scrollY       = 0;
-  lastCursorTop = -1;
+  currentIndex = correctCount = wrongCount = totalTyped = 0;
+  timeLeft     = GAME_DURATION;
+  gameActive   = gameStarted = false;
+  currentLine  = 0;
 
   timerDisplay.textContent = GAME_DURATION;
   timerDisplay.style.color = '';
   wpmDisplay.textContent   = '0';
 
-  words = generateWords(80);
-  buildTextDisplay();
-
-  // Show typing UI
-  idleScreen.style.display    = 'none';
-  textDisplay.style.display   = 'block';
-  accuracyWrap.style.display  = 'flex';
-  accuracyBar.style.width     = '100%';
-  accuracyLabel.textContent   = '100%';
-
+  // ── Show text-display BEFORE building so getBoundingClientRect works ──
+  idleScreen.style.display   = 'none';
+  textDisplay.style.display  = 'block';
+  accuracyWrap.style.display = 'flex';
+  accuracyBar.style.width    = '100%';
+  accuracyLabel.textContent  = '100%';
   resultsOverlay.style.display = 'none';
   startBtn.style.display       = 'none';
   resetBtn.style.display       = 'inline-flex';
-
   modeBadge.textContent = 'TYPE!';
   modeBadge.className   = 'badge active';
 
-  // Focus hidden input
+  words = generateWords(80);
+  buildTextDisplay();
+
+  // Measure line positions after a paint so layout is settled
+  requestAnimationFrame(() => {
+    measureLineMap();
+    // Reset inner position without animation
+    const inner = document.getElementById('text-inner');
+    if (inner) {
+      inner.style.transition = 'none';
+      inner.style.transform  = 'translateY(0px)';
+      // Re-enable transition after one frame
+      requestAnimationFrame(() => {
+        if (inner) inner.style.transition = '';
+      });
+    }
+  });
+
   hiddenInput.value = '';
   hiddenInput.focus();
   gameActive = true;
@@ -214,69 +237,89 @@ function initGame() {
 function endGame() {
   clearInterval(timerInterval);
   gameActive = false;
-
   hiddenInput.blur();
 
   const finalWPM = calcWPM();
   const finalAcc = calcAccuracy();
   const isNew    = saveHighScore(finalWPM);
 
-  // Populate results
   resultWpm.textContent   = finalWPM;
   resultAcc.textContent   = finalAcc + '%';
   resultChars.textContent = correctCount;
   newBest.style.display   = isNew ? 'block' : 'none';
-
-  modeBadge.textContent = 'DONE';
-  modeBadge.className   = 'badge done';
-
-  // Show overlay
+  modeBadge.textContent   = 'DONE';
+  modeBadge.className     = 'badge done';
   resultsOverlay.style.display = 'flex';
 }
 
 function resetGame() {
   clearInterval(timerInterval);
-  gameActive   = false;
-
+  gameActive = false;
   hiddenInput.value = '';
-  startBtn.style.display = 'block';
-  resetBtn.style.display = 'none';
-  idleScreen.style.display = 'flex';
-  textDisplay.style.display = 'none';
+  startBtn.style.display     = 'block';
+  resetBtn.style.display     = 'none';
+  idleScreen.style.display   = 'flex';
+  textDisplay.style.display  = 'none';
   accuracyWrap.style.display = 'none';
   resultsOverlay.style.display = 'none';
-  timerDisplay.textContent = GAME_DURATION;
-  timerDisplay.style.color = '';
-  wpmDisplay.textContent   = '0';
-  modeBadge.textContent    = 'READY';
-  modeBadge.className      = 'badge';
+  timerDisplay.textContent   = GAME_DURATION;
+  timerDisplay.style.color   = '';
+  wpmDisplay.textContent     = '0';
+  modeBadge.textContent      = 'READY';
+  modeBadge.className        = 'badge';
+}
+
+// ─── Smooth line scroll ────────────────────────────────
+// Uses the pre-built lineStarts map. Finds which line
+// currentIndex is on, then sets translateY to keep it
+// always on the SECOND visible line (so there's context).
+function scrollToCursor() {
+  if (!lineStarts.length || !lineH) return;
+
+  const inner = document.getElementById('text-inner');
+  if (!inner) return;
+
+  // Find cursor's line using the line-start map
+  let line = 0;
+  for (let i = lineStarts.length - 1; i >= 0; i--) {
+    if (currentIndex >= lineStarts[i]) {
+      line = i;
+      break;
+    }
+  }
+
+  // No change needed if still on the same line
+  if (line === currentLine) return;
+  currentLine = line;
+
+  // Always keep cursor on line index 1 (2nd row) so there's
+  // one "done" line above and fresh lines below — just like
+  // MonkeyType / typeracer feel.
+  const targetScrollLine = Math.max(0, line - 1);
+  const newY = -(targetScrollLine * lineH);
+
+  inner.style.transform = `translateY(${newY}px)`;
 }
 
 // ─── Input Handling ────────────────────────────────────
-hiddenInput.addEventListener('input', (e) => {
+hiddenInput.addEventListener('input', () => {
   if (!gameActive) return;
 
-  // Start timer on first keypress
   if (!gameStarted) {
     gameStarted = true;
     startTimer();
   }
 
   const typed = hiddenInput.value;
-
-  // We only care about the last character typed
-  if (typed.length === 0) return;
+  if (!typed.length) return;
 
   const typedChar = typed[typed.length - 1];
-  hiddenInput.value = ''; // clear for next keystroke
+  hiddenInput.value = '';
 
   if (currentIndex >= wordSpans.length) return;
 
   const { span, char } = wordSpans[currentIndex];
-
-  // Remove cursor from current
   span.classList.remove('cursor');
-
   totalTyped++;
 
   if (typedChar === char) {
@@ -289,110 +332,66 @@ hiddenInput.addEventListener('input', (e) => {
 
   currentIndex++;
 
-  // Set cursor to next
   if (currentIndex < wordSpans.length) {
     wordSpans[currentIndex].span.classList.add('cursor');
     scrollToCursor();
   } else {
-    // All words done — regenerate
+    // All words typed — generate a new batch
     words = generateWords(80);
     buildTextDisplay();
-    // Reset scroll for the fresh word batch
-    scrollY = 0;
-    lastCursorTop = -1;
-    const inner = document.getElementById('text-inner');
-    if (inner) inner.style.transform = 'translateY(0px)';
+    currentLine = 0;
+    requestAnimationFrame(() => {
+      measureLineMap();
+      const inner = document.getElementById('text-inner');
+      if (inner) {
+        inner.style.transition = 'none';
+        inner.style.transform  = 'translateY(0px)';
+        requestAnimationFrame(() => { if (inner) inner.style.transition = ''; });
+      }
+    });
     currentIndex = 0;
   }
 
-  // Update live WPM
+  // Live stats
   wpmDisplay.textContent = calcWPM();
+  const acc = calcAccuracy();
+  accuracyBar.style.width     = acc + '%';
+  accuracyLabel.textContent   = acc + '%';
+  accuracyBar.style.background = acc < 70
+    ? 'linear-gradient(90deg, var(--wrong), #ff8a00)'
+    : 'linear-gradient(90deg, var(--cyan), var(--violet))';
+});
 
-  // Update accuracy bar
+// Backspace
+hiddenInput.addEventListener('keydown', (e) => {
+  if (!gameActive || e.key !== 'Backspace' || currentIndex <= 0) return;
+
+  currentIndex--;
+  const { span } = wordSpans[currentIndex];
+
+  if (currentIndex + 1 < wordSpans.length)
+    wordSpans[currentIndex + 1].span.classList.remove('cursor');
+
+  if (span.classList.contains('correct'))      correctCount--;
+  else if (span.classList.contains('wrong'))   wrongCount--;
+  totalTyped = Math.max(0, totalTyped - 1);
+
+  span.classList.remove('correct', 'wrong');
+  span.classList.add('cursor');
+
+  // Re-measure cursor line for backspace scrollback
+  scrollToCursor();
+
+  wpmDisplay.textContent = calcWPM();
   const acc = calcAccuracy();
   accuracyBar.style.width   = acc + '%';
   accuracyLabel.textContent = acc + '%';
-  if (acc < 70) {
-    accuracyBar.style.background = 'linear-gradient(90deg, var(--wrong), #ff8a00)';
-  } else {
-    accuracyBar.style.background = 'linear-gradient(90deg, var(--cyan), var(--violet))';
-  }
 });
 
-// Handle backspace via keydown (input event doesn't fire for backspace on empty field)
-hiddenInput.addEventListener('keydown', (e) => {
-  if (!gameActive) return;
-  if (e.key === 'Backspace' && currentIndex > 0) {
-    currentIndex--;
-    const { span } = wordSpans[currentIndex];
-
-    // Remove cursor from old position
-    if (currentIndex + 1 < wordSpans.length) {
-      wordSpans[currentIndex + 1].span.classList.remove('cursor');
-    }
-
-    // Revert current char
-    if (span.classList.contains('correct')) {
-      correctCount--;
-    } else if (span.classList.contains('wrong')) {
-      wrongCount--;
-    }
-    totalTyped = Math.max(0, totalTyped - 1);
-
-    span.classList.remove('correct', 'wrong');
-    span.classList.add('cursor');
-
-    // Recount WPM / accuracy
-    wpmDisplay.textContent = calcWPM();
-    const acc = calcAccuracy();
-    accuracyBar.style.width   = acc + '%';
-    accuracyLabel.textContent = acc + '%';
-  }
-});
-
-// Keep input focused while game is active (tap anywhere on card)
+// Re-focus input when tapping the card
 document.getElementById('typing-card').addEventListener('click', () => {
   if (gameActive) hiddenInput.focus();
 });
-
-// ─── Smooth line-by-line scroll ───────────────────────
-// Tracks cursor position on every keypress. When it crosses
-// into a new line, shifts the inner wrapper up by one lineH
-// and updates lastCursorTop so the next comparison is correct.
-function scrollToCursor() {
-  if (currentIndex >= wordSpans.length) return;
-
-  const inner = document.getElementById('text-inner');
-  if (!inner) return;
-
-  const cursorSpan    = wordSpans[currentIndex].span;
-  const containerRect = textDisplay.getBoundingClientRect();
-  const cursorRect    = cursorSpan.getBoundingClientRect();
-
-  // Actual rendered height of one character span × line-height ratio
-  const spanH = wordSpans[0].span.getBoundingClientRect().height;
-  const lineH = spanH * 1.9;
-
-  // Cursor top relative to the text-display window (accounts for current translateY)
-  const cursorTopNow = cursorRect.top - containerRect.top;
-
-  // First call — just record position, no scroll yet
-  if (lastCursorTop < 0) {
-    lastCursorTop = cursorTopNow;
-    return;
-  }
-
-  // Cursor dropped into a new line (moved down by more than half a span height)
-  if (cursorTopNow > lastCursorTop + spanH * 0.5) {
-    scrollY -= lineH;                                        // accumulate upward shift
-    inner.style.transform = `translateY(${scrollY}px)`;     // CSS transition handles smoothness
-    // After transform the cursor visually moved up by lineH,
-    // so update our reference point accordingly
-    lastCursorTop = cursorTopNow - lineH;
-  } else {
-    lastCursorTop = cursorTopNow;
-  }
-}
 
 // ─── Button Events ─────────────────────────────────────
 startBtn.addEventListener('click', initGame);
@@ -404,21 +403,15 @@ playAgainBtn.addEventListener('click', initGame);
   const canvas = document.getElementById('bg-canvas');
   const ctx    = canvas.getContext('2d');
   let W, H, particles;
+  const COLORS = ['rgba(77,240,212,','rgba(131,111,255,','rgba(255,111,186,'];
 
-  const COLORS = ['rgba(77,240,212,', 'rgba(131,111,255,', 'rgba(255,111,186,'];
-
-  function resize() {
-    W = canvas.width  = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-  }
+  function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
 
   function createParticles(n = 55) {
     particles = Array.from({ length: n }, () => ({
-      x:     Math.random() * W,
-      y:     Math.random() * H,
-      r:     Math.random() * 1.8 + 0.4,
-      dx:    (Math.random() - 0.5) * 0.4,
-      dy:    (Math.random() - 0.5) * 0.4,
+      x: Math.random() * W, y: Math.random() * H,
+      r: Math.random() * 1.8 + 0.4,
+      dx: (Math.random() - 0.5) * 0.4, dy: (Math.random() - 0.5) * 0.4,
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
       alpha: Math.random() * 0.5 + 0.1
     }));
@@ -431,18 +424,14 @@ playAgainBtn.addEventListener('click', initGame);
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
       ctx.fillStyle = p.color + p.alpha + ')';
       ctx.fill();
-
-      p.x += p.dx;
-      p.y += p.dy;
+      p.x += p.dx; p.y += p.dy;
       if (p.x < 0 || p.x > W) p.dx *= -1;
       if (p.y < 0 || p.y > H) p.dy *= -1;
     });
     requestAnimationFrame(draw);
   }
 
-  resize();
-  createParticles();
-  draw();
+  resize(); createParticles(); draw();
   window.addEventListener('resize', () => { resize(); createParticles(); });
 })();
 
