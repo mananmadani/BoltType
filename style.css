@@ -234,26 +234,39 @@ html, body {
   color: var(--text-muted);
   word-wrap: break-word;
   display: none;
-  /* Fixed 3-line clipping window — text slides UP as you type */
-  height: calc(1.12rem * 1.9 * 2.2); /* ~2 visible lines — safer above keyboard */
+  /* Show exactly 3 lines — text slides up behind a hard clip */
+  height: calc(1.12rem * 1.9 * 3);
   overflow: hidden;
   position: relative;
 }
 
-/* Fade-out top edge so scrolled-past lines disappear smoothly */
-.text-display::after {
+/* Top mask — fully opaque for 1 line, then transparent.
+   This completely hides any text that has scrolled past. */
+.text-display::before {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
-  height: 28px;
+  height: calc(1.12rem * 1.9 * 1);   /* covers exactly 1 line */
+  background: var(--surface);         /* solid — no bleed-through */
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* Thin fade between the mask and visible text so it looks soft */
+.text-display::after {
+  content: '';
+  position: absolute;
+  top: calc(1.12rem * 1.9 * 0.7);
+  left: 0; right: 0;
+  height: calc(1.12rem * 1.9 * 0.5);
   background: linear-gradient(to bottom, var(--surface) 0%, transparent 100%);
   pointer-events: none;
   z-index: 2;
 }
 
-/* Inner scrolling wrapper — gets translateY applied by JS */
+/* Inner scrolling wrapper — smooth slide driven by JS translateY */
 #text-inner {
-  transition: transform 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: transform 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   will-change: transform;
 }
 
