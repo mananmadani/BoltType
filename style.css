@@ -234,6 +234,27 @@ html, body {
   color: var(--text-muted);
   word-wrap: break-word;
   display: none;
+  /* Fixed 3-line clipping window — text slides UP as you type */
+  height: calc(1.12rem * 1.9 * 3);   /* exactly 3 visible lines */
+  overflow: hidden;
+  position: relative;
+}
+
+/* Fade-out top edge so scrolled-past lines disappear smoothly */
+.text-display::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 28px;
+  background: linear-gradient(to bottom, var(--surface) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Inner scrolling wrapper — gets translateY applied by JS */
+#text-inner {
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
 }
 
 .text-display span {
