@@ -73,6 +73,8 @@ let timeLeft      = GAME_DURATION;
 let gameActive    = false;
 let gameStarted   = false;
 let highScore     = 0;
+let scrollY       = 0;    // current translateY applied to #text-inner
+let lastCursorTop = -1;   // cursor's last measured top (px from container)
 
 // ─── High Score ────────────────────────────────────────
 function loadHighScore() {
@@ -179,6 +181,8 @@ function initGame() {
   timeLeft      = GAME_DURATION;
   gameActive    = false;
   gameStarted   = false;
+  scrollY       = 0;
+  lastCursorTop = -1;
 
   timerDisplay.textContent = GAME_DURATION;
   timerDisplay.style.color = '';
@@ -293,9 +297,11 @@ hiddenInput.addEventListener('input', (e) => {
     // All words done — regenerate
     words = generateWords(80);
     buildTextDisplay();
-    // Reset the slide-up position for the fresh batch
+    // Reset scroll for the fresh word batch
+    scrollY = 0;
+    lastCursorTop = -1;
     const inner = document.getElementById('text-inner');
-    if (inner) inner.style.transform = 'translateY(0)';
+    if (inner) inner.style.transform = 'translateY(0px)';
     currentIndex = 0;
   }
 
@@ -349,38 +355,43 @@ document.getElementById('typing-card').addEventListener('click', () => {
   if (gameActive) hiddenInput.focus();
 });
 
-// ─── Scroll cursor into view (slide text UP) ──────────
+// ─── Smooth line-by-line scroll ───────────────────────
+// Tracks cursor position on every keypress. When it crosses
+// into a new line, shifts the inner wrapper up by one lineH
+// and updates lastCursorTop so the next comparison is correct.
 function scrollToCursor() {
   if (currentIndex >= wordSpans.length) return;
 
   const inner = document.getElementById('text-inner');
   if (!inner) return;
 
-  const cursorSpan = wordSpans[currentIndex].span;
+  const cursorSpan    = wordSpans[currentIndex].span;
+  const containerRect = textDisplay.getBoundingClientRect();
+  const cursorRect    = cursorSpan.getBoundingClientRect();
 
-  // One line height = fontSize × lineHeight = 1.12rem × 1.9
-  // We measure it live from the first span so it's always accurate
-  const firstSpan = wordSpans[0] ? wordSpans[0].span : null;
-  const lineH = firstSpan
-    ? Math.round(firstSpan.getBoundingClientRect().height * 1.9)
-    : Math.round(parseFloat(getComputedStyle(textDisplay).fontSize) * 1.9);
+  // Actual rendered height of one character span × line-height ratio
+  const spanH = wordSpans[0].span.getBoundingClientRect().height;
+  const lineH = spanH * 1.9;
 
-  // offsetTop of cursor span relative to #text-inner
-  // Walk up the DOM to get offset relative to inner
-  let offsetTop = 0;
-  let el = cursorSpan;
-  while (el && el !== inner) {
-    offsetTop += el.offsetTop;
-    el = el.offsetParent;
+  // Cursor top relative to the text-display window (accounts for current translateY)
+  const cursorTopNow = cursorRect.top - containerRect.top;
+
+  // First call — just record position, no scroll yet
+  if (lastCursorTop < 0) {
+    lastCursorTop = cursorTopNow;
+    return;
   }
 
-  // Which line is the cursor on? (0-indexed)
-  const currentLine = Math.floor(offsetTop / lineH);
-
-  // Keep cursor on the 1st visible line; slide up once it reaches line 2+
-  const translateY = currentLine > 0 ? -(currentLine * lineH) : 0;
-
-  inner.style.transform = `translateY(${translateY}px)`;
+  // Cursor dropped into a new line (moved down by more than half a span height)
+  if (cursorTopNow > lastCursorTop + spanH * 0.5) {
+    scrollY -= lineH;                                        // accumulate upward shift
+    inner.style.transform = `translateY(${scrollY}px)`;     // CSS transition handles smoothness
+    // After transform the cursor visually moved up by lineH,
+    // so update our reference point accordingly
+    lastCursorTop = cursorTopNow - lineH;
+  } else {
+    lastCursorTop = cursorTopNow;
+  }
 }
 
 // ─── Button Events ─────────────────────────────────────
