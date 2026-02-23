@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0f1a" />
+  <meta name="description" content="BoltType – Test your typing speed on mobile!" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>BoltType</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- Background canvas for animated particles -->
+  <canvas id="bg-canvas"></canvas>
+
+  <div class="app-wrapper">
+
+    <!-- Header / Logo -->
+    <header class="app-header">
+      <div class="logo-wrap">
+        <img src="BoltType.png" alt="BoltType Logo" class="logo-img" onerror="this.style.display='none'" />
+        <span class="logo-text">Bolt<span class="logo-accent">Type</span></span>
+      </div>
+      <div class="badge" id="mode-badge">READY</div>
+    </header>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar" id="stats-bar">
+      <div class="stat-pill">
+        <span class="stat-icon">⏱</span>
+        <span class="stat-value" id="timer-display">60</span>
+        <span class="stat-label">SEC</span>
+      </div>
+      <div class="stat-pill stat-pill--center">
+        <span class="stat-value large" id="wpm-display">0</span>
+        <span class="stat-label">WPM</span>
+      </div>
+      <div class="stat-pill">
+        <span class="stat-icon">🏆</span>
+        <span class="stat-value" id="highscore-display">0</span>
+        <span class="stat-label">BEST</span>
+      </div>
+    </div>
+
+    <!-- Main typing area -->
+    <main class="typing-card" id="typing-card">
+
+      <!-- Idle screen -->
+      <div class="idle-screen" id="idle-screen">
+        <p class="idle-hint">Press <strong>Start</strong> and type as fast as you can!</p>
+        <div class="bolt-icon">⚡</div>
+      </div>
+
+      <!-- Text display -->
+      <div class="text-display" id="text-display" aria-live="polite"></div>
+
+      <!-- Accuracy bar -->
+      <div class="accuracy-bar-wrap" id="accuracy-wrap" style="display:none">
+        <div class="accuracy-bar-track">
+          <div class="accuracy-bar-fill" id="accuracy-bar"></div>
+        </div>
+        <span class="accuracy-label" id="accuracy-label">100%</span>
+      </div>
+
+    </main>
+
+    <!-- Hidden input for mobile keyboard -->
+    <input
+      type="text"
+      id="hidden-input"
+      class="hidden-input"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      aria-label="Typing input"
+    />
+
+    <!-- Controls -->
+    <div class="controls">
+      <button class="btn btn--start" id="start-btn">Start Game</button>
+      <button class="btn btn--ghost" id="reset-btn" style="display:none">↺ Restart</button>
+    </div>
+
+    <!-- Results overlay -->
+    <div class="results-overlay" id="results-overlay" style="display:none">
+      <div class="results-card">
+        <div class="results-title">⚡ Round Over</div>
+        <div class="results-grid">
+          <div class="result-item">
+            <span class="result-num" id="result-wpm">0</span>
+            <span class="result-lbl">WPM</span>
+          </div>
+          <div class="result-item">
+            <span class="result-num" id="result-acc">0%</span>
+            <span class="result-lbl">Accuracy</span>
+          </div>
+          <div class="result-item">
+            <span class="result-num" id="result-chars">0</span>
+            <span class="result-lbl">Chars</span>
+          </div>
+        </div>
+        <div class="new-best" id="new-best" style="display:none">🏆 New High Score!</div>
+        <button class="btn btn--start" id="play-again-btn">Play Again</button>
+      </div>
+    </div>
+
+  </div><!-- end app-wrapper -->
+
+  <script src="app.js"></script>
+</body>
+</html>
