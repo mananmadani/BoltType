@@ -130,7 +130,7 @@ html,body {
 }
 
 /* Char states */
-.text-display span.correct { color:var(--correct); }
+.word { display: inline; white-space: nowrap; }
 .text-display span.wrong   { color:var(--wrong); background:rgba(255,83,112,0.12); border-radius:3px; }
 .text-display span.cursor  { position:relative; }
 .text-display span.cursor::after {
