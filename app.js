@@ -111,14 +111,14 @@ function buildTextDisplay() {
     });
 
     // Space after every word except the last
+    textDisplay.appendChild(wordEl);
+
     if (wi < words.length - 1) {
       const sp = document.createElement('span');
       sp.textContent = ' ';
-      wordEl.appendChild(sp);
+      textDisplay.appendChild(sp);
       wordSpans.push({ span: sp, char: ' ' });
     }
-
-    textDisplay.appendChild(wordEl);
   });
 
   if (wordSpans.length) wordSpans[0].span.classList.add('cursor');
@@ -286,11 +286,11 @@ hiddenInput.addEventListener('input', () => {
         wordEl.appendChild(s);
         wordSpans.push({ span: s, char: ch });
       });
+      textDisplay.appendChild(wordEl);
       const sp = document.createElement('span');
       sp.textContent = ' ';
-      wordEl.appendChild(sp);
+      textDisplay.appendChild(sp);
       wordSpans.push({ span: sp, char: ' ' });
-      textDisplay.appendChild(wordEl);
     });
     wordSpans[currentIndex].span.classList.add('cursor');
   }
