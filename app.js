@@ -1,6 +1,6 @@
 /* =====================================================
    BoltType — app.js
-   Clean original logic + simple 5-line scroll
+   Original 5-line scroll version + word-break fix
    ===================================================== */
 'use strict';
 
@@ -70,9 +70,7 @@ let timeLeft      = GAME_DURATION;
 let gameActive    = false;
 let gameStarted   = false;
 let highScore     = 0;
-
-// Scroll state — track which visual line the cursor is on
-let activeLine    = 0;   // 0-based index of line cursor is on
+let activeLine    = 0;   // which line we've scrolled to
 let lineHeight    = 0;   // px height of one rendered line
 
 // ─── High Score ───────────────────────────────────────
@@ -92,7 +90,7 @@ function saveHighScore(s) {
 
 // ─── Generate words ───────────────────────────────────
 function generateWords(n = 100) {
-  return Array.from({length: n}, () =>
+  return Array.from({ length: n }, () =>
     WORD_BANK[Math.floor(Math.random() * WORD_BANK.length)]);
 }
 
@@ -112,6 +110,7 @@ function buildTextDisplay() {
       wordSpans.push({ span: s, char: ch });
     });
 
+    // Space after every word except the last
     if (wi < words.length - 1) {
       const sp = document.createElement('span');
       sp.textContent = ' ';
@@ -122,41 +121,30 @@ function buildTextDisplay() {
     textDisplay.appendChild(wordEl);
   });
 
-  // First char gets the cursor
   if (wordSpans.length) wordSpans[0].span.classList.add('cursor');
 }
 
 // ─── Measure one real line height ─────────────────────
-// Called after DOM is visible so getBoundingClientRect works.
 function measureLineHeight() {
   if (!wordSpans.length) return;
-  // Line height = character box height × CSS line-height ratio (1.9)
   lineHeight = wordSpans[0].span.getBoundingClientRect().height * 1.9;
 }
 
-// ─── Scroll: keep cursor on screen ────────────────────
-// Works by comparing cursor's rendered top to the container top.
-// Every time cursor drops a full line below where it started,
-// we shift textDisplay's scrollTop up by one lineHeight.
-// No translateY, no transforms — plain scrollTop on the container.
+// ─── Scroll: keep cursor in 5-line window ─────────────
+// Compares cursor's rendered top to container top.
+// Scrolls up one line whenever cursor goes past line 2.
+// Scrolls back down on backspace.
 function scrollToCursor() {
   if (!lineHeight || currentIndex >= wordSpans.length) return;
 
-  const cursorSpan    = wordSpans[currentIndex].span;
-  const containerTop  = textDisplay.getBoundingClientRect().top;
-  const cursorTop     = cursorSpan.getBoundingClientRect().top;
+  const containerTop = textDisplay.getBoundingClientRect().top;
+  const cursorTop    = wordSpans[currentIndex].span.getBoundingClientRect().top;
+  const linesBelow   = Math.round((cursorTop - containerTop) / lineHeight);
 
-  // How many lines below the container top is the cursor?
-  const linesBelow = Math.round((cursorTop - containerTop) / lineHeight);
-
-  // We want the cursor on line index 2 (3rd row, 0-based) so there are
-  // always 2 completed lines visible above it for reading context.
-  // Once cursor goes below that threshold, scroll up by one line.
   if (linesBelow > 2) {
     activeLine++;
     textDisplay.scrollTop = activeLine * lineHeight;
   }
-  // Backspace: if cursor came back up, scroll down
   if (linesBelow < 1 && activeLine > 0) {
     activeLine--;
     textDisplay.scrollTop = activeLine * lineHeight;
@@ -184,11 +172,11 @@ function calcAccuracy() {
 function updateStats() {
   wpmDisplay.textContent = calcWPM();
   const acc = calcAccuracy();
-  accuracyBar.style.width     = acc + '%';
-  accuracyLabel.textContent   = acc + '%';
+  accuracyBar.style.width      = acc + '%';
+  accuracyLabel.textContent    = acc + '%';
   accuracyBar.style.background = acc < 70
-    ? 'linear-gradient(90deg,var(--wrong),#ff8a00)'
-    : 'linear-gradient(90deg,var(--cyan),var(--violet))';
+    ? 'linear-gradient(90deg, var(--wrong), #ff8a00)'
+    : 'linear-gradient(90deg, var(--cyan), var(--violet))';
 }
 
 // ─── Game Flow ────────────────────────────────────────
@@ -204,7 +192,7 @@ function initGame() {
   timerDisplay.style.color = '';
   wpmDisplay.textContent   = '0';
 
-  // Show the text area BEFORE building so layout is measurable
+  // Show the card BEFORE building so getBoundingClientRect works
   idleScreen.style.display   = 'none';
   textDisplay.style.display  = 'block';
   textDisplay.scrollTop      = 0;
@@ -220,10 +208,8 @@ function initGame() {
   words = generateWords(100);
   buildTextDisplay();
 
-  // Wait for browser to paint, then measure line height
-  requestAnimationFrame(() => {
-    measureLineHeight();
-  });
+  // Measure after browser paints
+  requestAnimationFrame(() => measureLineHeight());
 
   hiddenInput.value = '';
   hiddenInput.focus();
@@ -234,8 +220,8 @@ function endGame() {
   clearInterval(timerInterval);
   gameActive = false;
   hiddenInput.blur();
-  const wpm = calcWPM();
-  const acc = calcAccuracy();
+  const wpm   = calcWPM();
+  const acc   = calcAccuracy();
   const isNew = saveHighScore(wpm);
   resultWpm.textContent   = wpm;
   resultAcc.textContent   = acc + '%';
@@ -264,7 +250,7 @@ function resetGame() {
   modeBadge.className        = 'badge';
 }
 
-// ─── Typing input ─────────────────────────────────────
+// ─── Input ────────────────────────────────────────────
 hiddenInput.addEventListener('input', () => {
   if (!gameActive) return;
   if (!gameStarted) { gameStarted = true; startTimer(); }
@@ -289,7 +275,7 @@ hiddenInput.addEventListener('input', () => {
     wordSpans[currentIndex].span.classList.add('cursor');
     scrollToCursor();
   } else {
-    // Ran out of words — append more without resetting scroll
+    // Append more words without resetting scroll
     const extra = generateWords(100);
     extra.forEach((word, wi) => {
       const wordEl = document.createElement('span');
@@ -300,7 +286,6 @@ hiddenInput.addEventListener('input', () => {
         wordEl.appendChild(s);
         wordSpans.push({ span: s, char: ch });
       });
-      // space after every word
       const sp = document.createElement('span');
       sp.textContent = ' ';
       wordEl.appendChild(sp);
@@ -323,13 +308,13 @@ hiddenInput.addEventListener('keydown', (e) => {
   if (span.classList.contains('correct'))    correctCount--;
   else if (span.classList.contains('wrong')) wrongCount--;
   totalTyped = Math.max(0, totalTyped - 1);
-  span.classList.remove('correct','wrong');
+  span.classList.remove('correct', 'wrong');
   span.classList.add('cursor');
   scrollToCursor();
   updateStats();
 });
 
-// ─── Keep keyboard open on tap ────────────────────────
+// Tap card to keep keyboard open
 document.getElementById('typing-card').addEventListener('click', () => {
   if (gameActive) hiddenInput.focus();
 });
@@ -344,23 +329,23 @@ playAgainBtn.addEventListener('click', initGame);
   const canvas = document.getElementById('bg-canvas');
   const ctx    = canvas.getContext('2d');
   let W, H, P;
-  const C = ['rgba(77,240,212,','rgba(131,111,255,','rgba(255,111,186,'];
+  const C = ['rgba(77,240,212,', 'rgba(131,111,255,', 'rgba(255,111,186,'];
   const resize = () => { W = canvas.width = innerWidth; H = canvas.height = innerHeight; };
-  const make   = (n=55) => P = Array.from({length:n}, () => ({
-    x:Math.random()*W, y:Math.random()*H,
-    r:Math.random()*1.8+0.4,
-    dx:(Math.random()-.5)*.4, dy:(Math.random()-.5)*.4,
-    c:C[Math.floor(Math.random()*C.length)],
-    a:Math.random()*.5+.1
+  const make   = (n = 55) => P = Array.from({ length: n }, () => ({
+    x: Math.random() * W, y: Math.random() * H,
+    r: Math.random() * 1.8 + 0.4,
+    dx: (Math.random() - .5) * .4, dy: (Math.random() - .5) * .4,
+    c: C[Math.floor(Math.random() * C.length)],
+    a: Math.random() * .5 + .1
   }));
   const draw = () => {
-    ctx.clearRect(0,0,W,H);
-    P.forEach(p=>{
-      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
-      ctx.fillStyle=p.c+p.a+')'; ctx.fill();
-      p.x+=p.dx; p.y+=p.dy;
-      if(p.x<0||p.x>W) p.dx*=-1;
-      if(p.y<0||p.y>H) p.dy*=-1;
+    ctx.clearRect(0, 0, W, H);
+    P.forEach(p => {
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = p.c + p.a + ')'; ctx.fill();
+      p.x += p.dx; p.y += p.dy;
+      if (p.x < 0 || p.x > W) p.dx *= -1;
+      if (p.y < 0 || p.y > H) p.dy *= -1;
     });
     requestAnimationFrame(draw);
   };
