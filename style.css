@@ -222,8 +222,7 @@ html, body {
 
 /* ── THE FIX: never break a word across lines ── */
 .word {
-  display: inline;
-  white-space: nowrap;
+  display: inline-block;
 }
 
 /* ── Character states ── */
