@@ -1,8 +1,8 @@
 /* =====================================================
-   BoltType — service-worker.js  v2
+   BoltType — service-worker.js
    ===================================================== */
 
-const CACHE_NAME = 'bolttype-v2';
+const CACHE_NAME = 'bolttype-v1';
 const CACHE_URLS = [
   './',
   'index.html',
