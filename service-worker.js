@@ -3,7 +3,7 @@
    Cache-first strategy for full offline support.
    ===================================================== */
 
-const CACHE_NAME    = 'bolttype-v1';
+const CACHE_NAME    = 'bolttype-v1.3';
 const CACHE_URLS    = [
   'index.html',
   'style.css',
